@@ -10,6 +10,7 @@ from binascii import hexlify, unhexlify
 from collections import namedtuple
 from itertools import islice
 from numbers import Integral
+from contextlib import contextmanager
 
 from bup import _helpers, compat, hashsplit, path, midx, bloom, xstat
 from bup.compat import (buffer,
@@ -434,6 +435,11 @@ class PackIdxV1(PackIdx):
         for ofs in range(start, start + 24 * self.nsha, 24):
             yield self.map[ofs : ofs + 20]
 
+    def close(self):
+        if self.map is not None:
+            self.map.close()
+            self.map = None
+
 
 class PackIdxV2(PackIdx):
     """Object representation of a Git pack index (version 2) file."""
@@ -476,6 +482,11 @@ class PackIdxV2(PackIdx):
         start = self.sha_ofs
         for ofs in range(start, start + 20 * self.nsha, 20):
             yield self.map[ofs : ofs + 20]
+
+    def close(self):
+        if self.map is not None:
+            self.map.close()
+            self.map = None
 
 
 _mpi_count = 0
@@ -602,7 +613,7 @@ class PackIdxList:
             for full in glob.glob(os.path.join(self.dir, b'*.idx')):
                 if not d.get(full):
                     try:
-                        ix = open_idx(full)
+                        ix = open_idx_noctx(full)
                     except GitError as e:
                         add_error(e)
                         continue
@@ -622,9 +633,23 @@ class PackIdxList:
     def add(self, hash):
         """Insert an additional object in the list."""
         self.also.add(hash)
+    
+    def close(self):
+        if self.packs is not None:
+            for pack in self.packs:
+                pack.close()
 
 
+@contextmanager
 def open_idx(filename):
+    idx = open_idx_noctx(filename)
+    try:
+        yield idx
+    finally:
+        idx.close()
+
+
+def open_idx_noctx(filename):
     if filename.endswith(b'.idx'):
         f = open(filename, 'rb')
         header = f.read(8)
@@ -644,6 +669,15 @@ def open_idx(filename):
         return midx.PackMidx(filename)
     else:
         raise GitError('idx filenames must end with .idx or .midx')
+
+
+@contextmanager
+def open_idx_list(dir, ignore_midx=False):
+    pack = PackIdxList(dir, ignore_midx)
+    try:
+        yield pack
+    finally:
+        pack.close()
 
 
 def idxmerge(idxlist, final_progress=True):
@@ -1065,16 +1099,16 @@ def rev_parse(committish, repo_dir=None):
         debug2("resolved from ref: commit = %s\n" % hexlify(head))
         return head
 
-    pL = PackIdxList(repo(b'objects/pack', repo_dir=repo_dir))
+    with open_idx_list(repo(b'objects/pack', repo_dir=repo_dir)) as pL:
 
-    if len(committish) == 40:
-        try:
-            hash = unhexlify(committish)
-        except TypeError:
-            return None
+        if len(committish) == 40:
+            try:
+                hash = unhexlify(committish)
+            except TypeError:
+                return None
 
-        if pL.exists(hash):
-            return hash
+            if pL.exists(hash):
+                return hash
 
     return None
 

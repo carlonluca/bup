@@ -80,10 +80,10 @@ if not hash:
     log("bup: error: commit %s not found.\n" % commit.decode('ascii'))
     sys.exit(2)
 
-pL = git.PackIdxList(git.repo(b'objects/pack'))
-if not pL.exists(hash):
-    log("bup: error: commit %s not found.\n" % commit.decode('ascii'))
-    sys.exit(2)
+with git.open_idx_list(git.repo(b'objects/pack')) as pL:
+    if not pL.exists(hash):
+        log("bup: error: commit %s not found.\n" % commit.decode('ascii'))
+        sys.exit(2)
 
 tag_file = git.repo(b'refs/tags/' + tag_name)
 try:

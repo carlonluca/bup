@@ -48,21 +48,21 @@ count = 0
 idxfiles = [argv_bytes(x) for x in extra]
 for name in idxfiles:
     try:
-        ix = git.open_idx(name)
+        with git.open_idx(name) as ix:
+            if len(opt.find) == 40:
+                if ix.exists(bin):
+                    out.write(b'%s %s\n' % (name, find))
+            else:
+                # slow, exhaustive search
+                for _i in ix:
+                    i = hexlify(_i)
+                    if i.startswith(find):
+                        out.write(b'%s %s\n' % (name, i))
+                    qprogress('Searching: %d\r' % count)
+                    count += 1
     except git.GitError as e:
         add_error('%r: %s' % (name, e))
         continue
-    if len(opt.find) == 40:
-        if ix.exists(bin):
-            out.write(b'%s %s\n' % (name, find))
-    else:
-        # slow, exhaustive search
-        for _i in ix:
-            i = hexlify(_i)
-            if i.startswith(find):
-                out.write(b'%s %s\n' % (name, i))
-            qprogress('Searching: %d\r' % count)
-            count += 1
 
 if saved_errors:
     log('WARNING: %d errors encountered while saving.\n' % len(saved_errors))

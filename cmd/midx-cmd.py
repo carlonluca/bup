@@ -53,36 +53,36 @@ def check_midx(name):
     nicename = git.repo_rel(name)
     log('Checking %s.\n' % path_msg(nicename))
     try:
-        ix = git.open_idx(name)
+        with git.open_idx(name) as ix:
+            for count,subname in enumerate(ix.idxnames):
+                with git.open_idx(os.path.join(os.path.dirname(name), subname)) as sub:
+                    for ecount,e in enumerate(sub):
+                        if not (ecount % 1234):
+                            qprogress('  %d/%d: %s %d/%d\r' 
+                                    % (count, len(ix.idxnames),
+                                        git.shorten_hash(subname).decode('ascii'),
+                                        ecount, len(sub)))
+                        if not sub.exists(e):
+                            add_error("%s: %s: %s missing from idx"
+                                    % (path_msg(nicename),
+                                        git.shorten_hash(subname).decode('ascii'),
+                                        hexstr(e)))
+                        if not ix.exists(e):
+                            add_error("%s: %s: %s missing from midx"
+                                    % (path_msg(nicename),
+                                        git.shorten_hash(subname).decode('ascii'),
+                                        hexstr(e)))
+            prev = None
+            for ecount,e in enumerate(ix):
+                if not (ecount % 1234):
+                    qprogress('  Ordering: %d/%d\r' % (ecount, len(ix)))
+                if e and prev and not e >= prev:
+                    add_error('%s: ordering error: %s < %s'
+                            % (nicename, hexstr(e), hexstr(prev)))
+                prev = e
     except git.GitError as e:
         add_error('%s: %s' % (pathmsg(name), e))
         return
-    for count,subname in enumerate(ix.idxnames):
-        sub = git.open_idx(os.path.join(os.path.dirname(name), subname))
-        for ecount,e in enumerate(sub):
-            if not (ecount % 1234):
-                qprogress('  %d/%d: %s %d/%d\r' 
-                          % (count, len(ix.idxnames),
-                             git.shorten_hash(subname).decode('ascii'),
-                             ecount, len(sub)))
-            if not sub.exists(e):
-                add_error("%s: %s: %s missing from idx"
-                          % (path_msg(nicename),
-                             git.shorten_hash(subname).decode('ascii'),
-                             hexstr(e)))
-            if not ix.exists(e):
-                add_error("%s: %s: %s missing from midx"
-                          % (path_msg(nicename),
-                             git.shorten_hash(subname).decode('ascii'),
-                             hexstr(e)))
-    prev = None
-    for ecount,e in enumerate(ix):
-        if not (ecount % 1234):
-            qprogress('  Ordering: %d/%d\r' % (ecount, len(ix)))
-        if e and prev and not e >= prev:
-            add_error('%s: ordering error: %s < %s'
-                      % (nicename, hexstr(e), hexstr(prev)))
-        prev = e
 
 
 _first = None
@@ -99,7 +99,7 @@ def _do_midx(outdir, outfilename, infilenames, prefixstr):
     midxs = []
     try:
         for name in infilenames:
-            ix = git.open_idx(name)
+            ix = git.open_idx_noctx(name)
             midxs.append(ix)
             inp.append((
                 ix.map,
@@ -180,9 +180,9 @@ def do_midx_dir(path, outfilename, prout):
         midxs = glob.glob(b'%s/*.midx' % path)
         contents = {}
         for mname in midxs:
-            m = git.open_idx(mname)
-            contents[mname] = [(b'%s/%s' % (path,i)) for i in m.idxnames]
-            sizes[mname] = len(m)
+            with git.open_idx(mname) as m:
+                contents[mname] = [(b'%s/%s' % (path,i)) for i in m.idxnames]
+                sizes[mname] = len(m)
                     
         # sort the biggest+newest midxes first, so that we can eliminate
         # smaller (or older) redundant ones that come later in the list
@@ -203,8 +203,8 @@ def do_midx_dir(path, outfilename, prout):
     idxs = [k for k in glob.glob(b'%s/*.idx' % path) if not already.get(k)]
 
     for iname in idxs:
-        i = git.open_idx(iname)
-        sizes[iname] = len(i)
+        with git.open_idx(iname) as i:
+            sizes[iname] = len(i)
 
     all = [(sizes[n],n) for n in (midxs + idxs)]
     

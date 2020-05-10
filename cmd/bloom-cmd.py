@@ -55,9 +55,10 @@ def check_bloom(path, bloomfilename, idx):
         idx = os.path.join(path, idx)
     log('bloom: bloom file: %s\n' % path_msg(rbloomfilename))
     log('bloom:   checking %s\n' % path_msg(ridx))
-    for objsha in git.open_idx(idx):
-        if not b.exists(objsha):
-            add_error('bloom: ERROR: object %s missing' % hexstr(objsha))
+    with git.open_idx(idx) as objshas:
+        for objsha in objshas:
+            if not b.exists(objsha):
+                add_error('bloom: ERROR: object %s missing' % hexstr(objsha))
 
 
 _first = None
@@ -77,14 +78,14 @@ def do_bloom(path, outfilename, k):
     rest_count = 0
     for i, name in enumerate(glob.glob(b'%s/*.idx' % path)):
         progress('bloom: counting: %d\r' % i)
-        ix = git.open_idx(name)
-        ixbase = os.path.basename(name)
-        if b and (ixbase in b.idxnames):
-            rest.append(name)
-            rest_count += len(ix)
-        else:
-            add.append(name)
-            add_count += len(ix)
+        with git.open_idx(name) as ix:
+            ixbase = os.path.basename(name)
+            if b and (ixbase in b.idxnames):
+                rest.append(name)
+                rest_count += len(ix)
+            else:
+                add.append(name)
+                add_count += len(ix)
 
     if not add:
         debug1("bloom: nothing to do.\n")
@@ -128,12 +129,12 @@ def do_bloom(path, outfilename, k):
     count = 0
     icount = 0
     for name in add:
-        ix = git.open_idx(name)
-        qprogress('bloom: writing %.2f%% (%d/%d objects)\r' 
-                  % (icount*100.0/add_count, icount, add_count))
-        b.add_idx(ix)
-        count += 1
-        icount += len(ix)
+        with git.open_idx(name) as ix:
+            qprogress('bloom: writing %.2f%% (%d/%d objects)\r' 
+                      % (icount*100.0/add_count, icount, add_count))
+            b.add_idx(ix)
+            count += 1
+            icount += len(ix)
 
     # Currently, there's an open file object for tfname inside b.
     # Make sure it's closed before rename.

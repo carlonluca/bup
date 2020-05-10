@@ -117,26 +117,26 @@ def test_midx_refreshing():
             p2name = os.path.join(c.cachedir, p2base)
             del rw
 
-            pi = git.PackIdxList(bupdir + b'/objects/pack')
-            WVPASSEQ(len(pi.packs), 2)
-            pi.refresh()
-            WVPASSEQ(len(pi.packs), 2)
-            WVPASSEQ(sorted([os.path.basename(i.name) for i in pi.packs]),
-                     sorted([p1base, p2base]))
+            with git.open_idx_list(bupdir + b'/objects/pack') as pi:
+                WVPASSEQ(len(pi.packs), 2)
+                pi.refresh()
+                WVPASSEQ(len(pi.packs), 2)
+                WVPASSEQ(sorted([os.path.basename(i.name) for i in pi.packs]),
+                        sorted([p1base, p2base]))
 
-            p1 = git.open_idx(p1name)
-            WVPASS(p1.exists(s1sha))
-            p2 = git.open_idx(p2name)
-            WVFAIL(p2.exists(s1sha))
-            WVPASS(p2.exists(s2sha))
+                with git.open_idx(p1name) as p1:
+                    WVPASS(p1.exists(s1sha))
+                with git.open_idx(p2name) as p2:
+                    WVFAIL(p2.exists(s1sha))
+                    WVPASS(p2.exists(s2sha))
 
-            subprocess.call([path.exe(), b'midx', b'-f'])
-            pi.refresh()
-            WVPASSEQ(len(pi.packs), 1)
-            pi.refresh(skip_midx=True)
-            WVPASSEQ(len(pi.packs), 2)
-            pi.refresh(skip_midx=False)
-            WVPASSEQ(len(pi.packs), 1)
+                subprocess.call([path.exe(), b'midx', b'-f'])
+                pi.refresh()
+                WVPASSEQ(len(pi.packs), 1)
+                pi.refresh(skip_midx=True)
+                WVPASSEQ(len(pi.packs), 2)
+                pi.refresh(skip_midx=False)
+                WVPASSEQ(len(pi.packs), 1)
 
 
 @wvtest
